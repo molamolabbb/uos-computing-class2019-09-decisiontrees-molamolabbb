@@ -1,0 +1,451 @@
+#+TITLE:
+# +AUTHOR:    Ian J. Watson
+# +EMAIL:     ian.james.watson@cern.ch
+# +DATE:      University of Seoul Graduate Course
+#+startup: beamer
+#+LaTeX_CLASS: beamer
+#+OPTIONS: ^:{} toc:nil H:2
+#+BEAMER_FRAME_LEVEL: 2
+#+LATEX_HEADER: \usepackage{tikz}  \usetikzlibrary{hobby}
+#+LATEX_HEADER: \usepackage{amsmath} \usepackage{graphicx} \usepackage{neuralnetwork}
+  
+# Theme Replacements
+#+BEAMER_THEME: Madrid
+#+LATEX_HEADER: \usepackage{mathpazo} \usepackage{bm}
+# +LATEX_HEADER: \definecolor{IanColor}{rgb}{0.4, 0, 0.6}
+#+BEAMER_HEADER: \definecolor{IanColor}{rgb}{0.0, 0.4, 0.6}
+#+BEAMER_HEADER: \usecolortheme[named=IanColor]{structure} % Set a nicer base color
+#+BEAMER_HEADER: \newcommand*{\LargerCdot}{\raisebox{-0.7ex}{\scalebox{2.5}{$\cdot$}}} 
+# +LATEX_HEADER: \setbeamertemplate{items}{$\LargerCdot$} % or \bullet, replaces ugly png
+#+BEAMDER_HEADER: \setbeamertemplate{items}{$\bullet$} % or \bullet, replaces ugly png
+#+BEAMER_HEADER: \colorlet{DarkIanColor}{IanColor!80!black} \setbeamercolor{alerted text}{fg=DarkIanColor} \setbeamerfont{alerted text}{series=\bfseries}
+#+LATEX_HEADER: \usepackage{epsdice}
+
+  
+#+LATEX: \setbeamertemplate{navigation symbols}{} % Turn off navigation
+  
+#+LATEX: \newcommand{\backupbegin}{\newcounter{framenumberappendix} \setcounter{framenumberappendix}{\value{framenumber}}}
+#+LATEX: \newcommand{\backupend}{\addtocounter{framenumberappendix}{-\value{framenumber}} \addtocounter{framenumber}{\value{framenumberappendix}}}
+  
+#+LATEX: \institute[UoS]{University of Seoul}
+#+LATEX: \author{Ian J. Watson}
+#+LATEX: \title[Decision Trees]{Introduction to Machine Learning (by Implementation)} \subtitle{Lecture 8: Decision Trees}
+#+LATEX: \date[ML (2019)]{University of Seoul Graduate Course 2019}
+#+LATEX: \titlegraphic{\includegraphics[height=.14\textheight]{../../../course/2018-stats-for-pp/KRF_logo_PNG.png} \hspace{15mm} \includegraphics[height=.2\textheight]{../../2017-stats-for-pp/logo/UOS_emblem.png}}
+#+LATEX: \maketitle
+
+# +LATEX:  \newcommand{\mylinktext}[4]{\ifthenelse{\equal{1}{1}}{$w^l_{jk}$}{}}
+#+LATEX:  \newcommand{\mylinktext}[4]{{$w^l_{jk}$}}
+
+* Introduction
+
+** Introduction
+
+- We've spent several weeks building up the pieces of neural networks,
+  today we'll change to a different direction
+- We'll start the Decision Tree path
+- As before, the setup is we have some input in \(\mathbb{R}^n\) with
+  known labels
+- We want to find a function that will send the known inputs to the
+  correct label and generalize to unseen data
+  - Generalize = the procedure should correctly classify unseen input
+
+** Decision Trees
+
+#+begin_latex
+\begin{center}
+
+\only<1> {
+\begin{tikzpicture}[sibling distance=10em,
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  sloped]
+  \node (A) {Is it raining?}
+    child [Yes] { node (B) {No umbrella} edge from parent node [above] {No} }
+    child [No] { node (C) {Take an umbrela} edge from parent node [above] {Yes} };
+\end{tikzpicture} }
+
+\only<2> {
+\begin{tikzpicture}[sibling distance=10em,
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  sloped]
+  \node {Is it raining?}
+    child { node {Is it sunny?} 
+            child { node {No hat} edge from parent node [above] {No} }
+            child { node {Wear a hat} edge from parent node [above] {Yes} }
+            edge from parent node [above] {No} }
+    child { node {Take an umbrella} edge from parent node [above] {Yes} };
+\end{tikzpicture} }
+
+\end{center}
+#+end_latex
+
+- Decision trees give a path to a result based on some conditions \pause
+- There could be several inputs, with multiple kinds of outputs
+  - But always evaluate from top node down
+- For true/false boolean inputs, straightforward to enumerate all options
+
+** Some Decision Tree Examples
+
+#+begin_latex
+\begin{center}
+
+\only<1> {
+\begin{tikzpicture}[sibling distance=10em,
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  sloped]
+  \node (A) {Muon \(p_T > 30\) GeV}
+    child [Yes] { node (B) {Not Selected} edge from parent node [above] {No} }
+    child [No] { node (C) {Muon \(|\eta|\) < 2.4} child {node {Not selected}} child {node {Selected}}
+    edge from parent node [above] {Yes} };
+\end{tikzpicture} }
+
+\end{center}
+#+end_latex
+
+- In the case of real valued inputs, we have to be more careful
+- We can create left/right branches by asking for a value to be
+  above/below some cut-off
+  - We turn a real value variable into a binary decision at each node
+
+** Decision Trees with Real Numbers
+
+#+begin_export latex
+\only<1>{\includegraphics[width=.33\textwidth]{scatter1.png}}
+
+\only<2>{
+\begin{tikzpicture}[sibling distance=10em,
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  sloped]
+  \node (A) {\(x2 > 0.5\)}
+    child [Yes] { node {Red} }
+    child [No] { node {Blue} };
+\end{tikzpicture}
+\includegraphics[width=.33\textwidth]{scatter2.png}}
+
+\only<3>{
+\begin{tikzpicture}[
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  level 1/.style={sibling distance=3cm},
+  level 2/.style={sibling distance=2cm}, 
+  level 3/.style={sibling distance=2cm},
+  sloped]
+  \node (A) {\(x2 > 0.5\)}
+    child { node {\(x1 > .15\)} child {node {Blue} edge from parent node [above] {no}} child {node {Red} edge from parent node [above] {yes}} edge from parent node [above] {no}}
+    child { node {\(x1 > .72\)} child {node {Blue} edge from parent node [above] {no}} child {node {Red} edge from parent node [above] {yes}} edge from parent node [above] {yes}}
+;
+\end{tikzpicture}
+\includegraphics[width=.33\textwidth]{scatter3.png}}
+
+\only<4>{
+\begin{tikzpicture}[
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  level 1/.style={sibling distance=3cm},
+  level 2/.style={sibling distance=2cm}, 
+  level 3/.style={sibling distance=2cm},
+  sloped]
+  \node (A) {\(x2 > 0.5\)}
+    child { node {\(x1 > .15\)} child {node {Blue} edge from parent node [above] {no}} child {node {Red} edge from parent node [above] {yes}} edge from parent node [above] {no}}
+    child { node {\(x1 > .72\)} 
+            child {node {Blue} edge from parent node [above] {no}} 
+	    child {node {\(x2 > 0.82\)} child {node {Red} edge from parent node [above] {no}} child {node {Blue} edge from parent node [above] {yes}}
+	    edge from parent node [above] {yes}} 
+            edge from parent node [above] {yes}}
+;
+\end{tikzpicture}
+\includegraphics[width=.33\textwidth]{scatter4.png}}
+#+end_export
+
+- Given a set of data we want to split into red and blue spaces \pause
+- The decision tree will partition the problem space into discrete regions \pause
+- Can add /levels/ to split the space up further and further
+
+#+begin_src python :session :exports none
+import matplotlib.pyplot as plt
+import numpy as np
+
+np.random.seed(225)
+bx, by, rx, ry = [], [], [], []
+for i in range(50):
+  x, y = np.random.random(2)
+  if x < y: bx.append(x); by.append(y)
+  else: rx.append(x); ry.append(y)
+
+def setup():
+    plt.clf()
+    plt.scatter(bx, by, s=10, c='b')
+    plt.scatter(rx, ry, s=10, c='r')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+
+setup()
+plt.savefig("scatter1.png")
+
+setup()
+plt.fill([0,0,1,1], [1,0.52,0.52,1], '#bbbbff', alpha=0.4)
+plt.fill([0,0,1,1], [0,0.52,0.52,0], '#ffbbbb', alpha=0.4)
+plt.savefig("scatter2.png")
+
+setup()
+plt.fill([0,0,0.15,0.15,0.7,0.7], [1,0,0,0.52,0.52,1], '#bbbbff', alpha=0.4)
+plt.fill([0.15,0.15,0.7,0.7,1,1], [0,0.52,0.52,1,1,0], '#ffbbbb', alpha=0.4)
+plt.savefig("scatter3.png")
+
+setup()
+plt.fill([0,0,0.15,0.15,0.7 ,0.7 ,1   ,1], 
+         [1,0,0   ,0.52,0.52,0.85,0.85,1], '#bbbbff', alpha=0.4)
+plt.fill([0.15,0.15,0.7,0.7,1,1], [0,0.52,0.52,0.85,0.85,0], '#ffbbbb', alpha=0.4)
+plt.savefig("scatter4.png")
+
+#+end_src
+#+RESULTS:
+| <matplotlib.patches.Polygon | object | at | 0x7f95ae566d68> |
+
+** Representation of a cut-offs in Python
+
+***                                                                   :BMCOL:
+    :PROPERTIES:
+    :BEAMER_col: .5
+    :END:
+
+#+begin_export latex
+\begin{tikzpicture}[
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  level 1/.style={sibling distance=3cm},
+  level 2/.style={sibling distance=2cm}, 
+  level 3/.style={sibling distance=2cm},
+  sloped]
+  \node (A) {\(x2 > 0.5\)}
+    child { node {\(x1 > .15\)} child {node {Blue} edge from parent node [above] {no}} child {node {Red} edge from parent node [above] {yes}} edge from parent node [above] {no}}
+    child { node {\(x1 > .72\)} 
+            child {node {Blue} edge from parent node [above] {no}} 
+	    child {node {\(x2 > 0.82\)} child {node {Red} edge from parent node [above] {no}} child {node {Blue} edge from parent node [above] {yes}}
+	    edge from parent node [above] {yes}} 
+            edge from parent node [above] {yes}}
+;
+\end{tikzpicture}
+#+end_export
+
+***                                                                   :BMCOL:
+    :PROPERTIES:
+    :BEAMER_col: .5
+    :END:
+
+- Notice we can always write the cuts as \(x_i > c\) for some \(i \in \mathbb{Z}\) and \(c \in \mathbb{R}\)
+- Our input will be a list of numbers, =x = [x0, x1, x2, x3, ...]=
+- We will therefore only represent the i and c in our python code
+  =(i,c)= will represent a node in the tree requiring \(x_i > c\) at
+  the node: =x[i] > c=
+
+** Tree Representation in Python
+
+***                                                                   :BMCOL:
+    :PROPERTIES:
+    :BEAMER_col: .5
+    :END:
+
+#+begin_export latex
+\begin{tikzpicture}[
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  level 1/.style={sibling distance=3cm},
+  level 2/.style={sibling distance=2cm}, 
+  level 3/.style={sibling distance=2cm},
+  sloped]
+  \node (A) {\(x2 > 0.5\)}
+    child { node {\(x1 > .15\)} child {node {Blue} edge from parent node [above] {no}} child {node {Red} edge from parent node [above] {yes}} edge from parent node [above] {no}}
+    child { node {\(x1 > .72\)} 
+            child {node {Blue} edge from parent node [above] {no}} 
+	    child {node {\(x2 > 0.82\)} child {node {Red} edge from parent node [above] {no}} child {node {Blue} edge from parent node [above] {yes}}
+	    edge from parent node [above] {yes}} 
+            edge from parent node [above] {yes}}
+;
+\end{tikzpicture}
+#+end_export
+
+***                                                                   :BMCOL:
+    :PROPERTIES:
+    :BEAMER_col: .5
+    :END:
+
+- Then, we need a way to store the tree structure
+- A /node/ on the tree can be:
+  - /branch node/, or decision point, in which case we represent it as
+    =[(i, c), left, right]= where =(i,c)= is the cutoff of the node,
+    and left and right are subtrees representing the no and yes case respectively
+  - /leaf node/, or an output, in which case we simply give the value that should be output
+
+** Tree Representation in Python
+
+***                                                                   :BMCOL:
+    :PROPERTIES:
+    :BEAMER_col: .5
+    :END:
+
+#+begin_export latex
+\begin{tikzpicture}[
+  edge from parent/.style = {draw, -latex},
+  every node/.style = {align=center},
+  level 1/.style={sibling distance=3cm},
+  level 2/.style={sibling distance=2cm}, 
+  level 3/.style={sibling distance=2cm},
+  sloped]
+  \node (A) {\(x2 > 0.5\)}
+    child { node {\(x1 > .15\)} child {node {Blue} edge from parent node [above] {no}} child {node {Red} edge from parent node [above] {yes}} edge from parent node [above] {no}}
+    child { node {\(x1 > .72\)} 
+            child {node {Blue} edge from parent node [above] {no}} 
+	    child {node {\(x2 > 0.82\)} child {node {Red} edge from parent node [above] {no}} child {node {Blue} edge from parent node [above] {yes}}
+	    edge from parent node [above] {yes}} 
+            edge from parent node [above] {yes}}
+;
+\end{tikzpicture}
+#+end_export
+
+***                                                                   :BMCOL:
+    :PROPERTIES:
+    :BEAMER_col: .5
+    :END:
+
+- Let the blue outputs be represented by 0 and red by 1
+
+***                                                         :B_ignoreheading:
+    :PROPERTIES:
+    :BEAMER_env: ignoreheading
+    :END:
+
+- This tree could be represented as:
+
+#+begin_src python
+[(2, 0.5),
+ [(1, 0.15), 0, 1], 
+ [(1, 0.72), 0, 
+             [(2, 0.82), 1, 0]]]
+#+end_src
+
+** Exercise
+
+- Write =is_tree(thing)= which returns true only if:
+  - thing is a list (test using =isinstance(thing, list)=) and the
+    length is 3, and =thing[0]= is a tuple (test =isinstance(thing, tuple)=)
+  - Remember the structure: =[(i, c), left, right]=
+  - This is so we can have output lists as well as single numbers
+- Write the function =classify(tree, data)= which takes a tree list
+  and input list, and calculates the classification of the data based
+  on the tree
+- This will need to be written /recursively/
+  - At a node:
+    - Check if the node is a tree
+    - If so, check the condition and /call classify with the correct subtree/
+    - If not, then we're done, and you can output the value
+- =tree_accuracy(x, y, tree)=
+  - Given a list of data =x= and the corresponding correct outputs
+    =y=, calculates the accuracy of the =tree= (correct / total)
+    [using =classify=]
+
+** Shannon's Information Entropy
+
+#+attr_latex: :width .4\textwidth
+[[file:information.png]]
+#+attr_latex: :width .4\textwidth
+[[file:entropy.png]]
+
+\vspace{-1mm}
+- Given a dataset with labels indexed by \(j\), we define the
+  information from observing label \(j\) as \(I_j = - \log_2 p_j\)
+  - where \(p_j\) represents the probability of label \(j\) to be in
+    the dataset (i.e. the fraction of data with label \(j\))
+    - If you put all the data in a hat and randomly picked one, what's
+      the chance its in the \(j\) category
+  - A low probability event "carries more information" than a high
+    probability event (the theory was developed for communication)
+- Then, we define entropy as \(S = - \sum_j p_j \log_2 p_j\)
+  - The average information expected from sampling the data once
+- As category prob. goes to 0 or 1, entropy goes to 0
+  - If a category saturates, its prob. is 1, all others are 0
+# - Entropy is high for very mixed datasets, low for datasets of a
+#   single category
+# - (There is a large chunk of theory due to Shannon about how to
+#   quantify information in communication, of which information entropy
+#   plays a large role, lets take it as read here)
+
+#+begin_src python :session :exports none
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.clf()
+x = np.linspace(0, 1, 2000)
+y = - np.log(x)
+plt.plot(x, y)
+plt.title("Information")
+plt.savefig("information.png")
+
+plt.clf()
+x = np.linspace(0, 1, 25000)
+y = - x * np.log(x)
+plt.plot(x, y)
+plt.title("Information Entropy")
+plt.savefig("entropy.png")
+#+end_src
+
+#+RESULTS:
+: Text(0.5, 1.0, 'Information Entropy')
+
+** Partition Entropy
+
+- What's this to do with decision trees?
+- Well, (next week) we will start off with the full dataset, then
+  begin partitioning the data via our cutoffs
+  - That is introduce branches to separate the data
+- We need a measure of how much better we separate the categories
+  after some new branch, we want to go high entropy to low entropy
+  - But taking the entropy of the whole dataset always results in the
+    same entropy
+- Instead, we will test this by checking the /partition entropy/
+- After partitioning the dataset \(\Omega\) into subsets \(\Omega_1, \Omega_2,
+  \ldots\) (think, the data at each of the leaves of the tree),
+  containing \(q_1, q_2, q_3, \ldots\) fraction of the data
+  - \(S = q_1 S(\Omega_1) + q_2 S(\Omega_2) + \ldots\) is the partition entropy
+  - i.e. the weighted average entropy of the subsets
+
+** Comments on partition entropy
+
+- Good branch splits should
+  - Put a large fraction of the data on either branch
+  - Have each branch result in lower entropy (less random, more into
+    individual classes)
+- If you split one element of on left branch, put everything else on
+  the right, then the left is very small entropy but doesn't help very
+  much in the classification
+- If you split the data 50-50 but each branch is equally random, this
+  also hasn't helped
+- Information is also called "surprisal", given a low-entropy set, you
+  are "surprised" if you pick out a low probability label
+  - Our goal is to minimize the "surpisal" of our splits
+
+** Exercises
+
+- =entropy(class_probabilities)=
+  - Takes a list of class probabilities and computes the entropy
+- =class_probabilities(labels)=
+  - Given a list of labels, returns a list of probabilities of labels
+  - output list is unlabelled, only the probabilities are returned
+- =data_entropy(labeled_data)=
+  - =labeled_data= is in the from =(x, y)= (where =x= and =y= may be
+    lists), return the entropy of the data based on the label =y=
+- =partition_entropy(subsets)=
+  - Given several subsets of the data ie a list of from =[subset1,
+    subset2, ...]= where each subset is in the form of =labeled_data=
+    above, return the partition entropy = weighted average of the
+    entropy
+# - =partition_by(data, idx, cutval)=
+#   - given dataset, cut on the idx'th variable at cutval, return a
+#     left/right list of datapoints passing/not passing cuts
+# - =labeled_partition_by(labeled_data, idx, cutval)=
+#   - given labeled dataset, cut on the idx'th variable at cutval, return a
+#     left/right list of datapoints passing/not passing cuts
